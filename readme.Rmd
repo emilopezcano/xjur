@@ -1,0 +1,478 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+Análisis de correspondencias con R: aplicación a datos de encuestas
+===================================================================
+
+II Seminario Análisis de datos avanzados en Ciencias de la Salud, 
+Facultad de Ciencias de la Salud de la Universidad Rey Juan Carlos,
+Campus de Alcorcón.
+
+Sesión impartida por Emilio López Cano, 24 de mayo de 2018
+
+Las diapositivas del seminario se encuentran en: http://emilio.lcano.com/p/seminariourjc18/
+
+Más ejemplos y explicaciones en mi libro de apuntes [Análisis de datos con R](http://emilio.lcano.com/b/adr/) (licencia CC)
+
+Para ver esta página con el código renderizado, imágenes, etc, visita: https://emilopezcano.github.io/seminario_urjc_2018/readme.html
+
+
+Preparando el entorno
+-------------------------
+
+Descarga e instala R y RStudio en tu sistema, y en ese orden. Puedes encontrar
+las instrucciones y los archivos de instalación en las siguientes direcciones:
+
+- http://www.r-project.org
+
+- http://www.rstudio.com
+
+
+Después de instalar R y RStudio, abre RStudio y ejecuta el siguiente
+código en la consola de RStudio:
+
+```{r, eval=FALSE}
+install.packages(c("usethis", "readxl", "FactoMineR", "factoextra", 
+                   "dplyr", "gplots", "corrplot", "knitr"))
+usethis::use_course("https://goo.gl/p3DU1Y")
+```
+
+
+En la consola se mostrarán mensajes de confirmación para descargar los materiales
+en un fichero zip. Tras confirmar, el fichero se descarga y descomprime automáticamente
+en la carpeta de usuario y se abre el proyecto RStudio con el que trabajaremos,
+incluido código y datos, que hay que descomprimir:
+
+```{r eval=FALSE}
+unzip("datos.zip")
+```
+
+
+
+Descripción e importación de datos
+----------------------------------
+
+Vamos a trabajar con la última [Encuesta europea de salud en España](http://www.ine.es/dyngs/INEbase/es/operacion.htm?c=Estadistica_C&cid=1254736176784&menu=resultados&idp=1254735573175)
+(EESE) que elabora el Instituto Nacional de Estadística. Se realiza con periodicidad 
+quinquenal, y la más reciente
+disponible es la de 2014. Esta encuesta contiene bastantes
+variables cualitativas adecuadas para realizar análisis de correspondencias,
+y obviamente de interés para la investigación en Ciencias de la Salud. En la web del 
+INE podemos encontrar y descargar los documentos metodológicos:
+
+- [Metodología general](http://www.ine.es/metodologia/t15/t153042014.pdf)
+
+- Cuestionarios: [adultos](http://www.ine.es/metodologia/t15/t153042014cues_a.pdf) y [hogar](http://www.ine.es/metodologia/t25/ecv_hog16.pdf)
+
+- [Diseño de registro y valores válidos de las variables](ftp://www.ine.es/temas/enceursalud/disreg_enceursalud14_a.xlsx)
+
+El INE publica los resultados de la encuesta después de su tratamiento. Pero además, 
+el pone a disposición los [microdatos de la encuesta](http://www.ine.es/dyngs/INEbase/es/operacion.htm?c=Estadistica_C&cid=1254736176784&menu=resultados&secc=1254736195298&idp=1254735573175), lo que es realmente interesante para la investigación académica. Los
+microdatos contienen las respuestas de cada cuestionario, con un formato
+determinado que se detalla en los documentos que acompañan a los datos.
+En el caso de la EESE, disponemos de ficheros en dos formatos: 
+
+- Texto plano TXT con las columnas de ancho fijo
+
+- Formato Excel, una columna para cada variable
+
+La descripción de las variables y posición en el fichero txt se encuentran en el
+fichero Excel de diseño de registro. Para este seminario vamos a importar
+los datos del fichero excel, cuya importación en R es trivial con el 
+paquete `readxl`:
+
+
+```{r, message=FALSE, eval=TRUE}
+library(readxl)
+eese <- read_excel("datos/MICRODAT.ADULTO.xlsx")
+```
+
+
+Tras la importación, tenemos un _data frame_ en el espacio de trabajo de R
+con el que podemos trabajar. Contiene 22842 observaciones (encuestas) de 429 
+variables (respuestas a preguntas del cuestionario):
+
+```{r}
+dim(eese)
+```
+
+Para este seminario vamos a seleccionar algunas variables cualitativas 
+como ejemplo. Siguiendo las mismas pautas que se dan a continuación se pueden
+analizar cualesquiera otras variables de interés. Del mismo modo, 
+el tratamiento y análisis de otras encuestas, ya sean microdatos publicados o
+de encuestas propias realizadas en las consultas médicas
+u hospitales, se realizaría de forma similar. Lo más eficiente es guardar los
+datos originales de la encuesta en un fichero excel con una fila por encuesta 
+y una columna por variable e importar los datos a un _data frame_ de R. 
+
+
+Seleccionamos las variables:
+
+- `E4`: Convivencia en pareja
+- `G21`: Estado de salud percibido en los últimos 12 meses
+- `T112`: Frecuencia con la que realiza alguna actividad física en su tiempo libre
+- `V121`: ¿Fuma actualmente?
+- `W127`: Frecuencia de consumo de alcohol en los últimos 12 meses
+
+La codificación de las preguntas se deduce del propio cuestionario: letra del apartado
+y nº de pregunta, que se puede comprobar también en el fichero de diseño de registro.
+En este punto es importante señalar que los microdatos de encuestas suelen 
+incluir una variable de homogeneización, llamada "factor de elevación", que
+viene a representar la ponderación que se le asigna a cada individuo que contesta
+la encuesta. Para facilitar la exposición no tendremos en cuenta este factor de
+elevación en los ejemplos, que sí habría que tener en cuenta, junto con el 
+resto de la metodología aplicada, en una investigación rigurosa.
+
+
+## Preparación de los datos
+
+Vamos a trabajar con un _data frame_ que contiene solo las variables de interés:
+
+```{r}
+library(dplyr)
+datos <- eese %>% 
+  select(convivencia = E4, 
+         estado.salud = G21, 
+         actividad = T112,
+         fuma = V121,
+         alcohol = W127)
+```
+
+
+Que tiene la siguiente estructura:
+
+```{r}
+str(datos)
+```
+
+Es decir, 22842 observaciones de 5 variables, todas ellas tipo carácter (chr).
+Esta sería una muestra de las primeras filas:
+
+```{r}
+knitr::kable(head(datos, 10))
+```
+
+Vemos que los valores de las variables son códigos, cuyo significado
+aparece tanto en la encuesta como en el archivo de diseño de registro. 
+Las variables cualitativas en R son de tipo factor, en vez de carácter, por lo
+que vamos primero a convertir estas variables en factores:
+
+```{r}
+datos <- datos %>% transmute_all(as.factor)
+```
+
+Ahora cada variable es un factor con varios niveles:
+
+```{r}
+str(datos)
+```
+
+Pero los códigos de los niveles no nos dicen mucho. Vamos a etiquetar estos
+niveles de forma más descriptiva para que las salidas y gráficos sean 
+interpretables fácilmente. Vamos a asignar como valores perdidos (`NA`)
+los valores  "No sabe" o "No contesta" en las encuestas. 
+De nuevo, esto lo hacemos para centrarnos en la explicación del análisis de 
+correspondencias.
+En una investigación rigurosa habría que analizar el efecto de estos valores faltantes.
+
+
+```{r}
+levels(datos$convivencia) <- c("cónyuge", "pareja", "no", NA, NA)
+levels(datos$estado.salud) <- c("Muy bueno", "Bueno", "Regular", "Malo", "Muy malo")
+levels(datos$actividad) <- c("ninguna", "ocasional", "mensual", "semanal", NA, NA)
+levels(datos$fuma) <- c("mucho", "poco", "ex", "nunca", NA, NA)
+levels(datos$alcohol) <- c("diario", "semanal", "semanal", "semanal", "mensual", 
+                           "mensual", "anual", "ex", "nunca",  NA, NA)
+```
+
+Quedando nuestro data.frame final en:
+
+```{r}
+str(datos)
+```
+
+## Asociación de variables
+
+Vamos a estudiar el factor estado de salud con el resto de atributos, para
+ver en cuál o cuáles hay alguna relación. Tomemos a modo de ejemplo el consumo
+de alcohol, veamos en primer lugar la tabla de frecuencias (la guardamos primero
+en un objeto para utilizarlo después):
+
+```{r}
+freqs <- table(datos$estado.salud, datos$alcohol)
+freqs
+```
+
+El paquete `gplots` permite visualizar gráficamente
+la tabla de frecuencias:
+
+```{r}
+library(gplots)
+balloonplot(freqs, label = FALSE, show.margins = FALSE,
+            main = "Consumo de alcohol vs. Estado de salud")
+```
+
+
+Para contrastar la relación entre ambos atributos, realizamos el test de la
+chi-cuadrado. De nuevo guardamos el objeto para acceder posteriormente a él:
+
+```{r}
+ct1 <- chisq.test(freqs)
+ct1
+```
+
+Para que el contraste sea potente debemos tener un número alto de observaciones,
+típicamente más de 30, y que los valores esperados sean más de cinco en cada
+celda, lo que se cumple sobradamente:
+
+```{r}
+ct1$expected
+```
+
+De igual modo podemos repetir el análisis para el resto de variables cualitativas
+que teníamos, o realizar un bucle para simplemente ver el p-valor y comprobar
+en cuáles hay relación o no:
+
+```{r}
+for (atributo in c("convivencia", "actividad", "fuma", "alcohol")){}
+sapply(datos[, c(1, 3:5)], function(x){
+  atributo <- factor(x)
+  chisq.test(table(datos$estado.salud, atributo))$p.value
+})
+```
+
+
+Lo que nos indica que todos están relacionados con el estado de salud. 
+Cuando el tamaño de la muestra es tan grande, 
+suele ser habitual que siempre se encuentre asociación.
+
+**Volver a la presentación**
+
+## Análisis de correspondencias simple
+
+La primera opción que tenemos para realizar el análisis de correspondencias
+con R es la función `ca` del paquete `ca`. No obstante, ya que el paquete
+`FactoMineR` tiene más funcionalidad, vamos a utilizar las funciones de este
+paquete directamente. Cargamos el paquete y realizamos el análisis con la función
+`CA`:
+
+```{r}
+library(FactoMineR)
+corres1 <- CA(freqs)
+```
+
+Automáticamente obtenemos el gráfico con la representación de las dos primeras
+dimensiones. Vemos que la primera dimensión ya explica casi toda la relación
+entre los atributos. A primera vista, la buena percepción del propio estado de salud
+se relaciona con algún consumo de alcohol, regular con los que nunca bebieron, y 
+malo con los ex bebedores. 
+
+Como hemos guardado el objeto, podemos obtener los resultados numéricos con
+la función genérica `summary`:
+
+```{r}
+summary(corres1)
+```
+
+
+Vemos que automáticamente nos ha proporcionado el resultado del contraste chi-cuadrado,
+por lo que podemos evitar realizarlo previamente. La primera tabla nos porporciona
+los autovalores de cada dimensión. El número de dimensiones es el menor número de 
+categorías menos uno (en este caso hay 5 categorías fila y 6 categorías columna, por
+lo que el número de dimensiones es 5-1=4). Aquí nos fijamos en el porcentaje de
+varianza acumulado, y vemos que incluso con una dimensión sería suficiente. Después
+tenemos, para cada atributo (fila y columna) las inercias de cada nivel de 
+atributo, y para cada dimensión su coordenada y dos medidas más: la contribución a
+esa coordenada concreta y la medida de calidad `cos2`.
+
+Vamos a ver algunas visualizaciones interesantes para interpretar los resultados
+numéricos. Utilizamos algunas funciones del paquete `factoextra`. La primera de ellas nos sirve para seleccionar el número de dimensiones
+que necesitamos para explicar la mayor parte posible de la variabilidad. Es un 
+gráfico de sedimentación, al que en este caso añadimos un criterio utilizado
+para esta selección (máximo entre los inversos del número de categorías menos uno, en
+este caso 25%).
+
+
+```{r}
+max.porc <- max(1/(dim(freqs)-1)*100)
+library(factoextra)
+fviz_screeplot(corres1) +
+ geom_hline(yintercept = max.porc, linetype = 2, color = "red") + 
+  labs(title = "Gráfico de sedimentación", x = "Dimensiones", 
+       y = "Porcentaje de variabilidad explicada")
+```
+
+
+Si necesitáramos más de dos dimensiones, deberiamos plantearnos si no podemos 
+reagrupar los factores, para lo cual podemos visualizarlos con alguna de las 
+medidas disponibles, y así detectar afinidades
+
+```{r}
+fviz_ca_row(corres1, col.row = "cos2",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE)
+fviz_ca_col(corres1, col.col = "cos2",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE)
+```
+
+En nuestro caso, como ya sabíamos, no es necesario.
+Ahora podemos ver para cada atributo cuál es la contribución de sus categorías
+a las dos dimensiones principales:
+
+```{r}
+fviz_contrib(corres1, choice = "row", axes = 1:2)
+fviz_contrib(corres1, choice = "col", axes = 1:2)
+```
+
+La línea discontinua nos indica cuál sería la contribución si fueran homogéneas.
+
+En el siguiente gráfico (del paquete `corrplot`) lo podemos visualizar para cada dimensión por separado:
+
+```{r}
+library(corrplot)
+corrplot(corres1$row$contrib, is.corr = FALSE)    
+corrplot(corres1$col$contrib, is.corr = FALSE)    
+```
+
+Por último, tenemos una visualización de intervalos de confianza en forma de 
+elipses para ver si realmente los niveles de los atributos se solapan:
+
+
+```{r}
+ellipseCA(corres1)
+```
+
+Donde vemos que tenemos más confianza para concluir cuáles son las relaciones.
+
+
+Con el resto de atributos se puede realizar el mismo
+análisis. A modo de ejemplo veamos simplemente el gráfico perceptual:
+
+```{r}
+CA(table(datos$estado.salud, datos$convivencia))
+CA(table(datos$estado.salud, datos$actividad))
+CA(table(datos$estado.salud, datos$fuma))
+```
+
+También podríamos analizar dos atributos cualesquiera, por ejemplo 
+el tabaco y el alcohol:
+
+```{r}
+CA(table(datos$alcohol, datos$fuma))
+```
+
+
+**Volver a la presentación**
+
+## Análisis de correspondencias múltiple
+
+Veamos ahora un análisis conjunto de todos los atributos mediante el 
+análisis de correspondencias múltiple. De nuevo vamos a usar el paquete
+`FactoMineR`. La función `MCA` por defecto utiliza los valores perdidos como
+una categoría. Podemos eliminar todas las encuestas que tengan algún valor
+perdido, pero estaríamos perdiendo información de los atributos que sí la 
+tienen. El argumento `na.method` admite el valor "average", que imputa los
+valores perdidos con un promedio.
+
+```{r}
+corres2 <- MCA(datos,  method = "Burt", na.method = "average")
+```
+
+Esta función produce dos gráficos: un mapa perceptual con todas las categorías
+de todas las variables, y otro solo con las variables, donde se pueden 
+identificar las relaciones más fuertes entre atributos.
+
+En general en un análisis de correspondencias múltiple las primeras dimensiones
+no van a explicar tanta varianza como en el simple, y es posible que tengamos
+que explorar más de dos dimensiones.
+
+```{r}
+summary(corres2)
+```
+
+Con el gráfico de sedimentación podemos tomar alguna decisinó al respecto:
+
+```{r}
+fviz_screeplot(corres2, addlabels = TRUE)
+```
+
+Por ejemplo, a partir de la tercera dimensión ya no ganamos mucho. A partir de
+aquí podemos hacer las mismas visualizaciones que habíamos visto para el análisis
+simple, por ejemplo:
+
+```{r}
+fviz_mca_var(corres2, col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE, # avoid text overlapping (slow)
+             ggtheme = theme_minimal()
+             )
+```
+
+Y utilizar la tercera dimensión también:
+
+
+```{r}
+fviz_mca_var(corres2, axes = c(1,3),
+             repel = TRUE, choice = "var",
+             ggtheme= theme_minimal())
+fviz_mca_var(corres2, axes = c(2,3), 
+             repel = TRUE, choice = "var",
+             ggtheme= theme_minimal())
+```
+
+
+```{r}
+fviz_mca_var(corres2, axes = c(1,3),
+             col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE, # avoid text overlapping (slow)
+             ggtheme = theme_minimal()
+             )
+fviz_mca_var(corres2, axes = c(2,3),
+             col.var = "contrib",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE, # avoid text overlapping (slow)
+             ggtheme = theme_minimal()
+             )
+```
+
+
+A medida que ganamos complejidad es más importante el conocimiento del problema
+para interpretar las dimensiones.
+
+## Más allá con R
+
+En este seminario hemos visto cómo realizar análisis de correspondencias
+de datos de encuestas. Se propone profundizar en los siguientes temas para
+sacar todo el partido a R.
+
+1. Análisis con el factor de elevación. Para crear tablas de frecuencias
+estimadas de toda la población, podemos usar la función `xtabs`:
+
+```{r}
+addmargins(xtabs(as.numeric(eese$FACTORADULTO)%/%1000 ~ SEXOa + E4, data = eese))
+```
+
+Esto nos sirve para el análisis de correspondencias simple, pero el múltiple
+solo acepta como entrada _data frames_, por lo que habría que usar otros paquetes.
+
+2. Análisis longitudinal. En el caso de encuestas es muy común que se repitan con cierta periodicidad. En el caso de la que hemos utilizado es quinquenal, pero solo tenemos dos porque anteriormente se utilizaba la encuesta nacional (no europea). 
+Cuando tenemos este tipo de datos longitudinales, se pueden realizar animaciones
+de los mapas perceptuales para ver la evolución en el tiempo de las asociaciones.
+Se pueden ver algunos ejemplos aquí: https://www.r-graph-gallery.com/animation/
+
+3. Informes reproducibles. Trabajar con el código e ir viendo las salidas está bien
+durante la investigación. Pero a la hora de presentar resultados, debemos 
+plasmarlos en un formato adecuado (informe, artículo, etc.) Se pueden crear 
+fácilmente informes en R que incluyan el tratamiento y análisis de datos, 
+código, y cualquier otro contenido (texto formateado, imágenes, etc.). 
+Aunque hay varias formas, la más sencilla y cómoda es utilizando ficheros
+R Markdown, que puede generar ficheros HTML, PDF y Microsoft Word. Este propio
+archivo es un fichero .Rmd, en el que además de gráficos y salida textual se
+ha incluido una tabla formateada.
+
+
+
