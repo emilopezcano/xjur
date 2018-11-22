@@ -15,11 +15,11 @@ Facultad de Economía y Empresa, Universidad de Murcia
 
 Taller impartido por Emilio López Cano, 23 de noviembre de 2018
 
-Las diapositivas del taller se encuentran en: http://emilio.lcano.com/p/taller_XJUR_2018/
+Las diapositivas del taller se encuentran en: http://emilio.lcano.com/p/xjur/
 
 Más ejemplos y explicaciones en mi libro de apuntes [Análisis de datos con R](http://emilio.lcano.com/b/adr/) (licencia CC)
 
-Para ver esta página con el código renderizado, imágenes, etc, visita: https://emilopezcano.github.io/taller_XJUR_2018/
+Para ver esta página con el código renderizado, imágenes, etc, visita: https://emilopezcano.github.io/xjur/
 
 
 Preparando el entorno
@@ -55,7 +55,7 @@ unzip("datos.zip")
 ```
 
 Si no se abre automáticamente el proyecto (en el menú superior derecho de
-RStudio se debería mostrar "taller_XJUR_2018" en el menú de proyectos),
+RStudio se debería mostrar "xjur" en el menú de proyectos),
 busca el proyecto en la carpeta del mismo nombre.
 
 Para seguir el taller, abre el fichero R Markdown "index.Rmd", y ve ejecutando
